@@ -46,8 +46,9 @@ export function toNullableNumber(value: unknown): number | null {
 export function toNullableWordNumber(value: unknown): number | null {
   const str = toNullableString(value);
   if (str === null) return null;
-  const key = str.toLowerCase();
-  return key in WORD_TO_NUMBER ? WORD_TO_NUMBER[key] : NaN;
+  // An unrecognized word (not a key of WORD_TO_NUMBER) falls back to NaN, which the zod schema
+  // above flags as invalid — same "bad but not missing" handling as toNullableNumber.
+  return WORD_TO_NUMBER[str.toLowerCase()] ?? NaN;
 }
 
 export const rowSchema = z.object({
@@ -138,7 +139,8 @@ export function parseArgs(argv: string[]): ImportOptions {
   const flags = new Map<string, string>();
   for (const arg of argv) {
     const match = /^--([^=]+)(?:=(.*))?$/.exec(arg);
-    if (match) flags.set(match[1], match[2] ?? 'true');
+    const key = match?.[1];
+    if (key) flags.set(key, match?.[2] ?? 'true');
   }
 
   const requestedBatchSize = Number(flags.get('batch-size') ?? FIRESTORE_BATCH_LIMIT);
