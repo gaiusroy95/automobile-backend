@@ -226,6 +226,20 @@ describe('POST /api/cars', () => {
     expect(res.body).toEqual({ success: true, data: { id: 'new-id-1', ...input } });
     expect(automobileService.create).toHaveBeenCalledWith(input);
   });
+
+  it('lowercases the name to match every imported record, so sorting and search stay correct', async () => {
+    // Regression test: a manually-added record stored in a different case than the imported
+    // dataset (all lowercase) sorts out of alphabetical order and never matches a search for its
+    // own name, since Firestore string range queries are case-sensitive byte comparisons.
+    const input = buildAutomobile({ name: 'Mim' });
+    (automobileService.create as jest.Mock).mockResolvedValue('new-id-1');
+
+    const res = await request(app).post('/api/cars').set('X-Admin-Key', validKey).send(input);
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.name).toBe('mim');
+    expect(automobileService.create).toHaveBeenCalledWith({ ...input, name: 'mim' });
+  });
 });
 
 describe('POST with malformed JSON body', () => {

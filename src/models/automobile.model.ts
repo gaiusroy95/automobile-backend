@@ -99,7 +99,15 @@ export const idParamSchema = z.object({
  * coercion.
  */
 export const createAutomobileSchema = z.object({
-  name: z.string().trim().min(1),
+  // Lowercased to match every imported record's convention (the dataset's `name` values are all
+  // lowercase) — sorting and the `q` prefix search are both case-sensitive Firestore range
+  // queries, so a manually-added record in a different case would sort out of place and never
+  // match a search for its own name.
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .transform((value) => value.toLowerCase()),
   mpg: z.number().nonnegative(),
   cylinders: z.number().int().positive(),
   displacement: z.number().positive(),
