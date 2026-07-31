@@ -40,9 +40,13 @@ npm install
 cp .env.example .env   # then fill in the Firebase values — see Environment Variables below
 ```
 
-⚠️ `package-lock.json` must stay in sync with `package.json` — both `npm ci` (used by the Docker
-build) and a clean install will fail otherwise. If you've pulled changes that touched
-`package.json`, run `npm install` locally at least once to regenerate and commit the lockfile.
+⚠️ `package-lock.json` is currently out of sync with `package.json` (dependencies were added
+across several commits without anyone running `npm install` locally to refresh the lockfile
+afterward). The Docker build works around this today by using `npm install` instead of `npm ci`
+(see Docker below), but that's a workaround, not a fix — `npm install` silently tolerates drift
+instead of catching it. To actually fix it: run `npm install` locally once, commit the
+regenerated `package-lock.json`, then switch the Dockerfile back to `npm ci` for reproducible,
+drift-checked installs.
 
 ## Environment Variables
 
@@ -144,8 +148,8 @@ the script only auto-executes when run as a CLI (`if (require.main === module)`)
 ## Docker
 
 The `Dockerfile` is a 4-stage build — `deps` (installs everything, incl. devDependencies, so
-`tsc` is available) → `build` (compiles `src/` to `dist/`) → `prod-deps` (a clean `npm ci
---omit=dev`, independent of the build stage) → `runner` (alpine + only `dist/` + only production
+`tsc` is available) → `build` (compiles `src/` to `dist/`) → `prod-deps` (a clean install with
+`--omit=dev`, independent of the build stage) → `runner` (alpine + only `dist/` + only production
 `node_modules`, running as the non-root `node` user). No source, TypeScript, devDependencies, or
 test files end up in the final image.
 
@@ -168,9 +172,9 @@ docker run --rm -p 3000:3000 --env-file .env firehawk-backend
   Render, and other orchestrators use this to know when the container is actually ready, not just
   that the process started.
 
-⚠️ Same lockfile caveat as Installation: `npm ci` (used in both the `deps` and `prod-deps` stages,
-deliberately instead of `npm install`, for reproducible installs) fails hard if `package-lock.json`
-is out of sync with `package.json`.
+⚠️ Both stages use `npm install`, not `npm ci` — see the lockfile note under Installation. This is
+why the image built and deployed successfully despite the lockfile drift; it's a workaround, and
+`npm ci` should be restored once the lockfile is regenerated.
 
 ## Deploying to Render
 

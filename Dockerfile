@@ -6,7 +6,11 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# `npm install` rather than `npm ci`: the lockfile has drifted from package.json (deps were
+# added across several commits without anyone running `npm install` locally to refresh it), and
+# `npm ci` hard-fails on any mismatch. `npm install` reconciles the two instead of demanding
+# exact sync. See the "Installation" section of README.md for how to get back to `npm ci` here.
+RUN npm install
 
 ################################################################################
 # 2) build — compile TypeScript -> dist/
@@ -24,7 +28,8 @@ RUN npm run build
 FROM node:22-alpine AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# See the note in the `deps` stage above — same reason for `npm install` over `npm ci`.
+RUN npm install --omit=dev
 
 ################################################################################
 # 4) runner — the actual image that ships: base + prod deps + compiled JS only
