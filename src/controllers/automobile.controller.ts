@@ -5,36 +5,24 @@ import { sendSuccess } from '../utils/apiResponse';
 import { ApiError } from '../utils/ApiError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { automobileService } from '../services/automobile.service';
-import type { ExportQuery, IdParam, SearchQuery } from '../models/automobile.model';
+import type {
+  CreateAutomobileInput,
+  ExportQuery,
+  IdParam,
+  SearchQuery,
+} from '../models/automobile.model';
 
 const CSV_COLUMNS = [
   'id',
-  'symboling',
-  'normalizedLosses',
-  'make',
-  'fuelType',
-  'aspiration',
-  'numOfDoors',
-  'bodyStyle',
-  'driveWheels',
-  'engineLocation',
-  'wheelBase',
-  'length',
-  'width',
-  'height',
-  'curbWeight',
-  'engineType',
-  'numOfCylinders',
-  'engineSize',
-  'fuelSystem',
-  'bore',
-  'stroke',
-  'compressionRatio',
+  'name',
+  'mpg',
+  'cylinders',
+  'displacement',
   'horsepower',
-  'peakRpm',
-  'cityMpg',
-  'highwayMpg',
-  'price',
+  'weight',
+  'acceleration',
+  'modelYear',
+  'origin',
 ];
 
 /**
@@ -61,6 +49,13 @@ export const getAutomobileById = asyncHandler(async (req: Request, res: Response
 
 /** Alias of `listAutomobiles` — see the doc comment there. */
 export const searchAutomobiles = listAutomobiles;
+
+/** Protected by `requireAdminKey` at the route level — see automobile.routes.ts. */
+export const createAutomobile = asyncHandler(async (req: Request, res: Response) => {
+  const input = req.validated.body as CreateAutomobileInput;
+  const id = await automobileService.create(input);
+  sendSuccess(res, { id, ...input }, 201);
+});
 
 export const exportAutomobiles = asyncHandler(async (req: Request, res: Response) => {
   const params = req.validated.query as ExportQuery;

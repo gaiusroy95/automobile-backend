@@ -1,0 +1,66 @@
+{
+  "indexes": [
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "name", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "mpg", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "cylinders", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "displacement", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "horsepower", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "weight", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "acceleration", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "origin", "order": "ASCENDING" },
+      { "fieldPath": "modelYear", "order": "ASCENDING" }
+    ] },
+
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "name", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "mpg", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "displacement", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "horsepower", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "weight", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "acceleration", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "automobiles", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "cylinders", "order": "ASCENDING" },
+      { "fieldPath": "modelYear", "order": "ASCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}

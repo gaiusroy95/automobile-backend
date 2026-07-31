@@ -24,6 +24,8 @@ services:
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
+      - key: ADMIN_API_KEY
+        sync: false # long random value, e.g. `openssl rand -hex 32` — gates POST /cars
       # If you're using the Secret File strategy instead of the three discrete vars above,
       # remove those and uncomment this one (and add the Secret File itself in the dashboard):
       # - key: FIREBASE_SERVICE_ACCOUNT_PATH

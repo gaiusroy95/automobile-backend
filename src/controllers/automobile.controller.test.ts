@@ -11,10 +11,12 @@ jest.mock('../services/automobile.service', () => ({
     filter: jest.fn(),
     search: jest.fn(),
     streamForExport: jest.fn(),
+    create: jest.fn(),
   },
 }));
 
 import {
+  createAutomobile,
   exportAutomobiles,
   getAutomobileById,
   listAutomobiles,
@@ -53,8 +55,8 @@ describe('automobile.controller', () => {
         query: {
           limit: 10,
           cursor: 'abc',
-          fuelType: 'gas',
-          sortBy: 'price',
+          origin: 'usa',
+          sortBy: 'mpg',
           sortOrder: 'desc',
         },
       });
@@ -63,7 +65,7 @@ describe('automobile.controller', () => {
       await listAutomobiles(req, res, next);
 
       expect(automobileService.query).toHaveBeenCalledWith(
-        { fuelType: 'gas', sortBy: 'price', sortOrder: 'desc' },
+        { origin: 'usa', sortBy: 'mpg', sortOrder: 'desc' },
         { limit: 10, cursor: 'abc' },
       );
       expect(res.status).toHaveBeenCalledWith(200);
@@ -110,23 +112,23 @@ describe('automobile.controller', () => {
       const result = { data: [], nextCursor: null, hasMore: false };
       (automobileService.query as jest.Mock).mockResolvedValue(result);
 
-      const req = mockReq({ query: { q: 'toy', fuelType: 'gas', limit: 5 } });
+      const req = mockReq({ query: { q: 'toy', origin: 'japan', limit: 5 } });
       const res = mockRes();
 
       await searchAutomobiles(req, res, next);
 
       expect(automobileService.query).toHaveBeenCalledWith(
-        { q: 'toy', fuelType: 'gas' },
+        { q: 'toy', origin: 'japan' },
         { limit: 5, cursor: undefined },
       );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ success: true, data: result });
     });
 
-    it('forwards a service-thrown ApiError (e.g. q + price range) to next()', async () => {
+    it('forwards a service-thrown ApiError (e.g. q + mpg range) to next()', async () => {
       (automobileService.query as jest.Mock).mockRejectedValue(new ApiError(400, 'conflict'));
 
-      const req = mockReq({ query: { q: 'a', minPrice: 100 } });
+      const req = mockReq({ query: { q: 'a', minMpg: 20 } });
       const res = mockRes();
 
       await searchAutomobiles(req, res, next);
@@ -135,12 +137,31 @@ describe('automobile.controller', () => {
     });
   });
 
+  describe('createAutomobile', () => {
+    it('creates the record and responds 201 with the id attached', async () => {
+      const input = buildAutomobile({ name: 'toyota corona' });
+      (automobileService.create as jest.Mock).mockResolvedValue('new-id-1');
+
+      const req = mockReq({ body: input });
+      const res = mockRes();
+
+      await createAutomobile(req, res, next);
+
+      expect(automobileService.create).toHaveBeenCalledWith(input);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        data: { id: 'new-id-1', ...input },
+      });
+    });
+  });
+
   describe('exportAutomobiles', () => {
     it('sets CSV response headers and streams service rows through as CSV', async () => {
-      const rows = Readable.from([{ id: '1', make: 'toyota' }], { objectMode: true });
+      const rows = Readable.from([{ id: '1', name: 'toyota corona' }], { objectMode: true });
       (automobileService.streamForExport as jest.Mock).mockReturnValue(rows);
 
-      const req = mockReq({ query: { fuelType: 'gas' } });
+      const req = mockReq({ query: { origin: 'japan' } });
       const passthrough = new PassThrough();
       const setHeader = jest.fn();
       const res = Object.assign(passthrough, { setHeader }) as unknown as Response;
@@ -150,7 +171,7 @@ describe('automobile.controller', () => {
 
       await exportAutomobiles(req, res, next);
 
-      expect(automobileService.streamForExport).toHaveBeenCalledWith({ fuelType: 'gas' });
+      expect(automobileService.streamForExport).toHaveBeenCalledWith({ origin: 'japan' });
       expect(setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
       expect(setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
@@ -158,8 +179,8 @@ describe('automobile.controller', () => {
       );
 
       const csv = Buffer.concat(chunks).toString();
-      expect(csv).toContain('make');
-      expect(csv).toContain('toyota');
+      expect(csv).toContain('name');
+      expect(csv).toContain('toyota corona');
     });
   });
 });

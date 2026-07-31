@@ -1,6 +1,7 @@
 /**
- * Imports the automobile dataset (classic UCI "imports-85" schema) from a CSV file into
- * Firestore. Run with `npm run import:automobile -- --file=data/automobile.csv`.
+ * Imports the automobile dataset (Kaggle's tawfikelmetwally/automobile-dataset — the "Auto MPG"
+ * schema: name, mpg, cylinders, displacement, horsepower, weight, acceleration, model_year,
+ * origin) from a CSV file into Firestore. Run with `npm run import:automobile`.
  *
  * Usage:
  *   tsx src/scripts/import-automobile-data.ts [--file=path] [--collection=name]
@@ -11,24 +12,18 @@ import { resolve } from 'node:path';
 import type { Firestore } from 'firebase-admin/firestore';
 import { parse } from 'csv-parse';
 import { z } from 'zod';
-import type { Automobile } from '../models/automobile.model';
+import { ORIGINS, type Automobile } from '../models/automobile.model';
 import { db } from '../services/firestore.service';
 import { logger } from '../utils/logger';
 
 const FIRESTORE_BATCH_LIMIT = 500;
 const MISSING_VALUE_MARKER = '?';
 
-const WORD_TO_NUMBER: Record<string, number> = {
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  eight: 8,
-  twelve: 12,
-};
+/** The source CSV stores model year as 2 digits (e.g. 70); all values fall in 1900s territory. */
+const YEAR_BASE = 1900;
 
-/** Blank cells and the dataset's own "?" marker both mean "missing". */
+/** Blank cells and the dataset's own "?" marker both mean "missing" (this particular CSV only
+ *  ever uses blank cells, but "?" is handled too in case a different export of it doesn't). */
 export function toNullableString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -42,83 +37,31 @@ export function toNullableNumber(value: unknown): number | null {
   return str === null ? null : Number(str);
 }
 
-/** The dataset spells door/cylinder counts as words (e.g. "four"); converts them to numbers. */
-export function toNullableWordNumber(value: unknown): number | null {
-  const str = toNullableString(value);
-  if (str === null) return null;
-  // An unrecognized word (not a key of WORD_TO_NUMBER) falls back to NaN, which the zod schema
-  // above flags as invalid — same "bad but not missing" handling as toNullableNumber.
-  return WORD_TO_NUMBER[str.toLowerCase()] ?? NaN;
-}
-
 export const rowSchema = z.object({
-  symboling: z.preprocess(toNullableNumber, z.number().int().min(-3).max(3)),
-  'normalized-losses': z.preprocess(toNullableNumber, z.number().nullable()),
-  make: z.preprocess(toNullableString, z.string().min(1)),
-  'fuel-type': z.preprocess(toNullableString, z.enum(['gas', 'diesel'])),
-  aspiration: z.preprocess(toNullableString, z.enum(['std', 'turbo'])),
-  'num-of-doors': z.preprocess(toNullableWordNumber, z.union([z.literal(2), z.literal(4)]).nullable()),
-  'body-style': z.preprocess(
-    toNullableString,
-    z.enum(['hardtop', 'wagon', 'sedan', 'hatchback', 'convertible']),
-  ),
-  'drive-wheels': z.preprocess(toNullableString, z.enum(['4wd', 'fwd', 'rwd'])),
-  'engine-location': z.preprocess(toNullableString, z.enum(['front', 'rear'])),
-  'wheel-base': z.preprocess(toNullableNumber, z.number()),
-  length: z.preprocess(toNullableNumber, z.number()),
-  width: z.preprocess(toNullableNumber, z.number()),
-  height: z.preprocess(toNullableNumber, z.number()),
-  'curb-weight': z.preprocess(toNullableNumber, z.number()),
-  'engine-type': z.preprocess(
-    toNullableString,
-    z.enum(['dohc', 'dohcv', 'l', 'ohc', 'ohcf', 'ohcv', 'rotor']),
-  ),
-  'num-of-cylinders': z.preprocess(toNullableWordNumber, z.number()),
-  'engine-size': z.preprocess(toNullableNumber, z.number()),
-  'fuel-system': z.preprocess(
-    toNullableString,
-    z.enum(['1bbl', '2bbl', '4bbl', 'idi', 'mfi', 'mpfi', 'spdi', 'spfi']),
-  ),
-  bore: z.preprocess(toNullableNumber, z.number().nullable()),
-  stroke: z.preprocess(toNullableNumber, z.number().nullable()),
-  'compression-ratio': z.preprocess(toNullableNumber, z.number()),
-  horsepower: z.preprocess(toNullableNumber, z.number().nullable()),
-  'peak-rpm': z.preprocess(toNullableNumber, z.number().nullable()),
-  'city-mpg': z.preprocess(toNullableNumber, z.number()),
-  'highway-mpg': z.preprocess(toNullableNumber, z.number()),
-  price: z.preprocess(toNullableNumber, z.number().nullable()),
+  name: z.preprocess(toNullableString, z.string().min(1)),
+  mpg: z.preprocess(toNullableNumber, z.number().nonnegative()),
+  cylinders: z.preprocess(toNullableNumber, z.number().int().positive()),
+  displacement: z.preprocess(toNullableNumber, z.number().positive()),
+  horsepower: z.preprocess(toNullableNumber, z.number().nonnegative().nullable()),
+  weight: z.preprocess(toNullableNumber, z.number().positive()),
+  acceleration: z.preprocess(toNullableNumber, z.number().positive()),
+  model_year: z.preprocess(toNullableNumber, z.number().int().nonnegative()),
+  origin: z.preprocess(toNullableString, z.enum(ORIGINS)),
 });
 
 export type ValidatedRow = z.infer<typeof rowSchema>;
 
 export function toFirestoreDoc(row: ValidatedRow): Automobile {
   return {
-    symboling: row.symboling,
-    normalizedLosses: row['normalized-losses'],
-    make: row.make,
-    fuelType: row['fuel-type'],
-    aspiration: row.aspiration,
-    numOfDoors: row['num-of-doors'],
-    bodyStyle: row['body-style'],
-    driveWheels: row['drive-wheels'],
-    engineLocation: row['engine-location'],
-    wheelBase: row['wheel-base'],
-    length: row.length,
-    width: row.width,
-    height: row.height,
-    curbWeight: row['curb-weight'],
-    engineType: row['engine-type'],
-    numOfCylinders: row['num-of-cylinders'],
-    engineSize: row['engine-size'],
-    fuelSystem: row['fuel-system'],
-    bore: row.bore,
-    stroke: row.stroke,
-    compressionRatio: row['compression-ratio'],
+    name: row.name,
+    mpg: row.mpg,
+    cylinders: row.cylinders,
+    displacement: row.displacement,
     horsepower: row.horsepower,
-    peakRpm: row['peak-rpm'],
-    cityMpg: row['city-mpg'],
-    highwayMpg: row['highway-mpg'],
-    price: row.price,
+    weight: row.weight,
+    acceleration: row.acceleration,
+    modelYear: YEAR_BASE + row.model_year,
+    origin: row.origin,
   };
 }
 
@@ -146,7 +89,7 @@ export function parseArgs(argv: string[]): ImportOptions {
   const requestedBatchSize = Number(flags.get('batch-size') ?? FIRESTORE_BATCH_LIMIT);
 
   return {
-    filePath: resolve(flags.get('file') ?? 'data/automobile.csv'),
+    filePath: resolve(flags.get('file') ?? 'data/Automobile.csv'),
     collectionName: flags.get('collection') ?? 'automobiles',
     batchSize: Math.min(requestedBatchSize, FIRESTORE_BATCH_LIMIT),
     dryRun: flags.has('dry-run'),

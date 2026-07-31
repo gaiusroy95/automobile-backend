@@ -11,3 +11,4 @@ process.env.FIREBASE_CLIENT_EMAIL =
 process.env.FIREBASE_PRIVATE_KEY =
   process.env.FIREBASE_PRIVATE_KEY ||
   '-----BEGIN PRIVATE KEY-----\nZmFrZS1wcml2YXRlLWtleS1mb3ItdGVzdHM=\n-----END PRIVATE KEY-----\n';
+process.env.ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'test-admin-key';

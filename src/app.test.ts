@@ -11,6 +11,7 @@ jest.mock('./services/automobile.service', () => ({
     filter: jest.fn(),
     search: jest.fn(),
     streamForExport: jest.fn(),
+    create: jest.fn(),
   },
 }));
 
@@ -91,10 +92,10 @@ describe('GET /api/cars', () => {
 
     await request(app)
       .get('/api/cars')
-      .query({ q: 'toy', fuelType: 'gas', sortBy: 'price', sortOrder: 'desc' });
+      .query({ q: 'toy', origin: 'japan', sortBy: 'name', sortOrder: 'desc' });
 
     expect(automobileService.query).toHaveBeenCalledWith(
-      { q: 'toy', fuelType: 'gas', sortBy: 'price', sortOrder: 'desc' },
+      { q: 'toy', origin: 'japan', sortBy: 'name', sortOrder: 'desc' },
       { limit: undefined, cursor: undefined },
     );
   });
@@ -132,12 +133,12 @@ describe('GET /api/cars/search', () => {
     const page = { data: [], nextCursor: null, hasMore: false };
     (automobileService.query as jest.Mock).mockResolvedValue(page);
 
-    const res = await request(app).get('/api/cars/search').query({ q: 'toy', fuelType: 'gas' });
+    const res = await request(app).get('/api/cars/search').query({ q: 'toy', origin: 'japan' });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, data: page });
     expect(automobileService.query).toHaveBeenCalledWith(
-      { q: 'toy', fuelType: 'gas' },
+      { q: 'toy', origin: 'japan' },
       { limit: undefined, cursor: undefined },
     );
   });
@@ -151,15 +152,15 @@ describe('GET /api/cars/search', () => {
     expect(automobileService.query).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when the service rejects a q + price-range combination', async () => {
+  it('returns 400 when the service rejects a q + mpg-range combination', async () => {
     (automobileService.query as jest.Mock).mockRejectedValue(
-      new ApiError(400, 'Cannot combine a text search (q) with a price range filter'),
+      new ApiError(400, 'Cannot combine a text search (q) with an MPG range filter'),
     );
 
-    const res = await request(app).get('/api/cars/search').query({ q: 'a', minPrice: 100 });
+    const res = await request(app).get('/api/cars/search').query({ q: 'a', minMpg: 20 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toMatch(/price range/);
+    expect(res.body.error.message).toMatch(/MPG range/);
   });
 });
 
@@ -167,8 +168,8 @@ describe('GET /api/cars/export', () => {
   it('streams a CSV file with the expected headers and content', async () => {
     const rows = Readable.from(
       [
-        { id: '1', make: 'toyota' },
-        { id: '2', make: 'honda' },
+        { id: '1', name: 'toyota corona' },
+        { id: '2', name: 'honda civic' },
       ],
       { objectMode: true },
     );
@@ -179,8 +180,51 @@ describe('GET /api/cars/export', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/csv');
     expect(res.headers['content-disposition']).toContain('attachment; filename="automobiles.csv"');
-    expect(res.text).toContain('toyota');
-    expect(res.text).toContain('honda');
+    expect(res.text).toContain('toyota corona');
+    expect(res.text).toContain('honda civic');
+  });
+});
+
+describe('POST /api/cars', () => {
+  const validKey = process.env.ADMIN_API_KEY as string;
+
+  it('returns 401 when no admin key is supplied', async () => {
+    const res = await request(app).post('/api/cars').send(buildAutomobile());
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+    expect(automobileService.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when the admin key is wrong', async () => {
+    const res = await request(app)
+      .post('/api/cars')
+      .set('X-Admin-Key', 'wrong-key')
+      .send(buildAutomobile());
+
+    expect(res.status).toBe(401);
+    expect(automobileService.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for an invalid body even with a valid admin key', async () => {
+    const res = await request(app)
+      .post('/api/cars')
+      .set('X-Admin-Key', validKey)
+      .send({ name: 'toyota corona' }); // missing every other required field
+
+    expect(res.status).toBe(400);
+    expect(automobileService.create).not.toHaveBeenCalled();
+  });
+
+  it('creates the record and returns 201 with a valid key and a valid body', async () => {
+    const input = buildAutomobile({ name: 'toyota corona' });
+    (automobileService.create as jest.Mock).mockResolvedValue('new-id-1');
+
+    const res = await request(app).post('/api/cars').set('X-Admin-Key', validKey).send(input);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ success: true, data: { id: 'new-id-1', ...input } });
+    expect(automobileService.create).toHaveBeenCalledWith(input);
   });
 });
 

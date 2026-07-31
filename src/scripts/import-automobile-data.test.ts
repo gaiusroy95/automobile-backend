@@ -3,47 +3,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Firestore } from 'firebase-admin/firestore';
 import { FakeFirestore } from '../test-utils/fakeFirestore';
-import {
-  parseArgs,
-  rowSchema,
-  run,
-  toFirestoreDoc,
-  toNullableNumber,
-  toNullableString,
-  toNullableWordNumber,
-} from './import-automobile-data';
+import { parseArgs, rowSchema, run, toFirestoreDoc, toNullableNumber, toNullableString } from './import-automobile-data';
 
 jest.mock('../utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const validRawRow = {
-  symboling: '3',
-  'normalized-losses': '?',
-  make: 'toyota',
-  'fuel-type': 'gas',
-  aspiration: 'std',
-  'num-of-doors': 'four',
-  'body-style': 'sedan',
-  'drive-wheels': 'fwd',
-  'engine-location': 'front',
-  'wheel-base': '95',
-  length: '170',
-  width: '65',
-  height: '55',
-  'curb-weight': '2200',
-  'engine-type': 'ohc',
-  'num-of-cylinders': 'four',
-  'engine-size': '120',
-  'fuel-system': 'mpfi',
-  bore: '3.2',
-  stroke: '3.1',
-  'compression-ratio': '9.5',
-  horsepower: '100',
-  'peak-rpm': '5000',
-  'city-mpg': '25',
-  'highway-mpg': '30',
-  price: '?',
+  name: 'chevrolet chevelle malibu',
+  mpg: '18',
+  cylinders: '8',
+  displacement: '307',
+  horsepower: '130',
+  weight: '3504',
+  acceleration: '12',
+  model_year: '70',
+  origin: 'usa',
 };
 
 describe('toNullableString', () => {
@@ -54,7 +29,7 @@ describe('toNullableString', () => {
   });
 
   it('trims and returns a real value', () => {
-    expect(toNullableString('  toyota  ')).toBe('toyota');
+    expect(toNullableString('  chevrolet  ')).toBe('chevrolet');
   });
 
   it('returns null for non-string input', () => {
@@ -67,8 +42,8 @@ describe('toNullableNumber', () => {
     expect(toNullableNumber('123.5')).toBe(123.5);
   });
 
-  it('returns null for missing values', () => {
-    expect(toNullableNumber('?')).toBeNull();
+  it('returns null for a blank (missing) value', () => {
+    expect(toNullableNumber('')).toBeNull();
   });
 
   it('returns NaN for a non-numeric, non-missing value (caught later by zod)', () => {
@@ -76,75 +51,70 @@ describe('toNullableNumber', () => {
   });
 });
 
-describe('toNullableWordNumber', () => {
-  it('converts known number words, case-insensitively', () => {
-    expect(toNullableWordNumber('four')).toBe(4);
-    expect(toNullableWordNumber('Six')).toBe(6);
-  });
-
-  it('returns null for missing values', () => {
-    expect(toNullableWordNumber('?')).toBeNull();
-  });
-
-  it('returns NaN for an unrecognized word', () => {
-    expect(Number.isNaN(toNullableWordNumber('seven'))).toBe(true);
-  });
-});
-
 describe('rowSchema', () => {
-  it('parses a valid row, converting "?" cells to null and words to numbers', () => {
+  it('parses a valid row, converting types appropriately', () => {
     const result = rowSchema.safeParse(validRawRow);
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data['normalized-losses']).toBeNull();
-      expect(result.data.price).toBeNull();
-      expect(result.data['num-of-doors']).toBe(4);
-      expect(result.data['num-of-cylinders']).toBe(4);
-      expect(result.data.symboling).toBe(3);
+      expect(result.data.name).toBe('chevrolet chevelle malibu');
+      expect(result.data.mpg).toBe(18);
+      expect(result.data.cylinders).toBe(8);
+      expect(result.data.model_year).toBe(70);
+      expect(result.data.origin).toBe('usa');
     }
   });
 
-  it('rejects an invalid enum value', () => {
-    const result = rowSchema.safeParse({ ...validRawRow, 'fuel-type': 'petrol' });
+  it('treats a blank horsepower cell as null (the dataset\'s actual missing-value convention)', () => {
+    const result = rowSchema.safeParse({ ...validRawRow, horsepower: '' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.horsepower).toBeNull();
+    }
+  });
+
+  it('rejects an invalid origin value', () => {
+    const result = rowSchema.safeParse({ ...validRawRow, origin: 'germany' });
     expect(result.success).toBe(false);
   });
 
-  it('rejects symboling outside the -3..3 range', () => {
-    const result = rowSchema.safeParse({ ...validRawRow, symboling: '10' });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects a missing required field (make)', () => {
-    const result = rowSchema.safeParse({ ...validRawRow, make: '?' });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects an unrecognized num-of-doors word', () => {
-    const result = rowSchema.safeParse({ ...validRawRow, 'num-of-doors': 'six' });
+  it('rejects a missing required field (name)', () => {
+    const result = rowSchema.safeParse({ ...validRawRow, name: '' });
     expect(result.success).toBe(false);
   });
 
   it('rejects a non-numeric value in a numeric column', () => {
-    const result = rowSchema.safeParse({ ...validRawRow, horsepower: 'abc' });
+    const result = rowSchema.safeParse({ ...validRawRow, mpg: 'abc' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-positive cylinders value', () => {
+    const result = rowSchema.safeParse({ ...validRawRow, cylinders: '0' });
     expect(result.success).toBe(false);
   });
 });
 
 describe('toFirestoreDoc', () => {
-  it('maps a validated row to the camelCase Automobile shape', () => {
+  it('maps a validated row to the Automobile shape, expanding the 2-digit year to a full year', () => {
     const validated = rowSchema.parse(validRawRow);
     const doc = toFirestoreDoc(validated);
 
-    expect(doc).toMatchObject({
-      symboling: 3,
-      normalizedLosses: null,
-      make: 'toyota',
-      fuelType: 'gas',
-      numOfDoors: 4,
-      numOfCylinders: 4,
-      price: null,
+    expect(doc).toEqual({
+      name: 'chevrolet chevelle malibu',
+      mpg: 18,
+      cylinders: 8,
+      displacement: 307,
+      horsepower: 130,
+      weight: 3504,
+      acceleration: 12,
+      modelYear: 1970,
+      origin: 'usa',
     });
+  });
+
+  it('preserves a null horsepower', () => {
+    const validated = rowSchema.parse({ ...validRawRow, horsepower: '' });
+    expect(toFirestoreDoc(validated).horsepower).toBeNull();
   });
 });
 
@@ -154,7 +124,7 @@ describe('parseArgs', () => {
     expect(options.collectionName).toBe('automobiles');
     expect(options.batchSize).toBe(500);
     expect(options.dryRun).toBe(false);
-    expect(options.filePath.replace(/\\/g, '/')).toMatch(/data\/automobile\.csv$/);
+    expect(options.filePath.replace(/\\/g, '/')).toMatch(/data\/Automobile\.csv$/);
   });
 
   it('overrides file, collection, batch-size, and dry-run from flags', () => {
@@ -179,18 +149,15 @@ describe('run', () => {
   let tmpDir: string;
   let csvPath: string;
 
-  const header =
-    'symboling,normalized-losses,make,fuel-type,aspiration,num-of-doors,body-style,drive-wheels,' +
-    'engine-location,wheel-base,length,width,height,curb-weight,engine-type,num-of-cylinders,' +
-    'engine-size,fuel-system,bore,stroke,compression-ratio,horsepower,peak-rpm,city-mpg,highway-mpg,price';
+  const header = 'name,mpg,cylinders,displacement,horsepower,weight,acceleration,model_year,origin';
 
-  // Row 3 (petrol) and row 4 (horsepower "abc") are intentionally invalid.
+  // Row 3 (invalid origin) and row 4 (non-numeric mpg) are intentionally invalid.
   const rows = [
-    '3,150,toyota,gas,std,four,sedan,fwd,front,95,170,65,55,2200,ohc,four,120,mpfi,3.2,3.1,9.5,100,5000,25,30,15000',
-    '1,?,honda,gas,std,two,hatchback,fwd,front,93,160,64,54,2100,ohc,four,110,2bbl,3.0,3.0,9.0,90,5200,28,33,?',
-    '0,120,ford,petrol,std,four,sedan,rwd,front,100,180,66,56,2400,ohc,four,130,mpfi,3.3,3.2,9.2,105,5100,24,28,16000',
-    '2,130,mazda,gas,turbo,two,hatchback,fwd,front,94,165,64,53,2050,ohc,four,115,mpfi,3.1,3.0,8.8,abc,5300,27,32,14000',
-    '-1,140,subaru,gas,std,four,wagon,4wd,front,99,175,68,58,2600,ohc,four,140,mpfi,3.4,3.3,9.8,110,5000,22,27,17500',
+    'chevrolet chevelle malibu,18,8,307,130,3504,12,70,usa',
+    'amc rebel sst,16,8,304,,3433,12,70,usa',
+    'toyota corona,24,4,113,95,2372,15,70,germany',
+    'mazda rx2 coupe,abc,3,70,97,2330,13.5,72,japan',
+    'volkswagen 1131 deluxe sedan,26,4,97,46,1835,20.5,70,europe',
   ];
 
   beforeEach(() => {
@@ -212,7 +179,11 @@ describe('run', () => {
 
     const stored = fake.dump('automobiles');
     expect(stored).toHaveLength(3);
-    expect(stored.map((doc) => doc.make).sort()).toEqual(['honda', 'subaru', 'toyota']);
+    expect(stored.map((doc) => doc.name).sort()).toEqual([
+      'amc rebel sst',
+      'chevrolet chevelle malibu',
+      'volkswagen 1131 deluxe sedan',
+    ]);
   });
 
   it('writes nothing in --dry-run mode but still reports an accurate summary', async () => {

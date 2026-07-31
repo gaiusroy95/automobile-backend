@@ -1,33 +1,25 @@
 import { z } from 'zod';
 
-/** The Automobile domain shape, as stored in Firestore (camelCase, snake-cased source columns). */
+export const ORIGINS = ['usa', 'europe', 'japan'] as const;
+
+/**
+ * The Automobile domain shape, matching the real dataset exactly (Kaggle's
+ * tawfikelmetwally/automobile-dataset, the classic "Auto MPG" dataset — one row per vehicle,
+ * not the "Automobile"/imports-85 spec-sheet dataset this was originally, incorrectly, built
+ * around). See `src/scripts/import-automobile-data.ts` for the raw CSV column mapping.
+ */
 export interface Automobile {
-  symboling: number;
-  normalizedLosses: number | null;
-  make: string;
-  fuelType: 'gas' | 'diesel';
-  aspiration: 'std' | 'turbo';
-  numOfDoors: 2 | 4 | null;
-  bodyStyle: 'hardtop' | 'wagon' | 'sedan' | 'hatchback' | 'convertible';
-  driveWheels: '4wd' | 'fwd' | 'rwd';
-  engineLocation: 'front' | 'rear';
-  wheelBase: number;
-  length: number;
-  width: number;
-  height: number;
-  curbWeight: number;
-  engineType: 'dohc' | 'dohcv' | 'l' | 'ohc' | 'ohcf' | 'ohcv' | 'rotor';
-  numOfCylinders: number;
-  engineSize: number;
-  fuelSystem: '1bbl' | '2bbl' | '4bbl' | 'idi' | 'mfi' | 'mpfi' | 'spdi' | 'spfi';
-  bore: number | null;
-  stroke: number | null;
-  compressionRatio: number;
+  name: string;
+  mpg: number;
+  cylinders: number;
+  displacement: number;
+  /** Null for the ~6 rows the source data leaves blank. */
   horsepower: number | null;
-  peakRpm: number | null;
-  cityMpg: number;
-  highwayMpg: number;
-  price: number | null;
+  weight: number;
+  acceleration: number;
+  /** Full 4-digit year (the source CSV stores it as a 2-digit year, e.g. 70 for 1970). */
+  modelYear: number;
+  origin: (typeof ORIGINS)[number];
 }
 
 export interface PaginationParams {
@@ -44,23 +36,21 @@ export interface PaginatedResult<T> {
 }
 
 export interface AutomobileFilters {
-  make?: string;
-  fuelType?: Automobile['fuelType'];
-  aspiration?: Automobile['aspiration'];
-  bodyStyle?: Automobile['bodyStyle'];
-  driveWheels?: Automobile['driveWheels'];
-  engineLocation?: Automobile['engineLocation'];
-  minPrice?: number;
-  maxPrice?: number;
+  origin?: Automobile['origin'];
+  cylinders?: number;
+  minMpg?: number;
+  maxMpg?: number;
 }
 
 export const SORTABLE_FIELDS = [
-  'make',
-  'price',
-  'cityMpg',
-  'highwayMpg',
+  'name',
+  'mpg',
+  'cylinders',
+  'displacement',
   'horsepower',
-  'symboling',
+  'weight',
+  'acceleration',
+  'modelYear',
 ] as const;
 
 export type SortableField = (typeof SORTABLE_FIELDS)[number];
@@ -71,7 +61,7 @@ export interface SortParams {
   sortOrder?: SortOrder;
 }
 
-/** Combines a free-text `make` prefix search with the structured filters above. */
+/** Combines a free-text `name` prefix search with the structured filters above. */
 export interface SearchParams extends AutomobileFilters, SortParams {
   q?: string;
 }
@@ -90,14 +80,10 @@ export const paginationQuerySchema = z.object({
 
 export const searchQuerySchema = paginationQuerySchema.extend({
   q: z.string().min(1).optional(),
-  make: z.string().min(1).optional(),
-  fuelType: z.enum(['gas', 'diesel']).optional(),
-  aspiration: z.enum(['std', 'turbo']).optional(),
-  bodyStyle: z.enum(['hardtop', 'wagon', 'sedan', 'hatchback', 'convertible']).optional(),
-  driveWheels: z.enum(['4wd', 'fwd', 'rwd']).optional(),
-  engineLocation: z.enum(['front', 'rear']).optional(),
-  minPrice: z.coerce.number().nonnegative().optional(),
-  maxPrice: z.coerce.number().nonnegative().optional(),
+  origin: z.enum(ORIGINS).optional(),
+  cylinders: z.coerce.number().int().positive().optional(),
+  minMpg: z.coerce.number().nonnegative().optional(),
+  maxMpg: z.coerce.number().nonnegative().optional(),
 });
 
 export const exportQuerySchema = searchQuerySchema.omit({ limit: true, cursor: true });
@@ -106,7 +92,26 @@ export const idParamSchema = z.object({
   id: z.string().min(1),
 });
 
+/**
+ * Full record shape for `POST /cars`. Unlike the CSV importer's schema (which parses
+ * string-typed cells), this validates a JSON body from the frontend's add-car form, where
+ * fields already arrive as real numbers/nulls — so it's stricter, with no string-to-number
+ * coercion.
+ */
+export const createAutomobileSchema = z.object({
+  name: z.string().trim().min(1),
+  mpg: z.number().nonnegative(),
+  cylinders: z.number().int().positive(),
+  displacement: z.number().positive(),
+  horsepower: z.number().nonnegative().nullable(),
+  weight: z.number().positive(),
+  acceleration: z.number().positive(),
+  modelYear: z.number().int(),
+  origin: z.enum(ORIGINS),
+});
+
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type ExportQuery = z.infer<typeof exportQuerySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
+export type CreateAutomobileInput = z.infer<typeof createAutomobileSchema>;

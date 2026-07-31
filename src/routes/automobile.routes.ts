@@ -1,12 +1,19 @@
 import { Router } from 'express';
 import { validate } from '../middleware/validate';
+import { requireAdminKey } from '../middleware/requireAdminKey';
 import {
+  createAutomobile,
   exportAutomobiles,
   getAutomobileById,
   listAutomobiles,
   searchAutomobiles,
 } from '../controllers/automobile.controller';
-import { exportQuerySchema, idParamSchema, searchQuerySchema } from '../models/automobile.model';
+import {
+  createAutomobileSchema,
+  exportQuerySchema,
+  idParamSchema,
+  searchQuerySchema,
+} from '../models/automobile.model';
 
 export const automobileRouter = Router();
 
@@ -16,3 +23,9 @@ automobileRouter.get('/search', validate({ query: searchQuerySchema }), searchAu
 automobileRouter.get('/export', validate({ query: exportQuerySchema }), exportAutomobiles);
 automobileRouter.get('/:id', validate({ params: idParamSchema }), getAutomobileById);
 automobileRouter.get('/', validate({ query: searchQuerySchema }), listAutomobiles);
+automobileRouter.post(
+  '/',
+  requireAdminKey,
+  validate({ body: createAutomobileSchema }),
+  createAutomobile,
+);

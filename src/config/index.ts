@@ -12,6 +12,7 @@ export const config = {
   isTest: env.NODE_ENV === 'test',
   port: env.PORT,
   corsOrigin,
+  adminApiKey: env.ADMIN_API_KEY,
   firebase: {
     serviceAccountPath: env.FIREBASE_SERVICE_ACCOUNT_PATH,
     projectId: env.FIREBASE_PROJECT_ID,

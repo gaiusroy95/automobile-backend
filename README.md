@@ -64,6 +64,7 @@ server booting into a broken state. See `.env.example` for a filled-in template.
 | `FIREBASE_CLIENT_EMAIL` | ⤷ | — | Firebase service account's `client_email` |
 | `FIREBASE_PRIVATE_KEY` | ⤷ | — | Firebase service account's `private_key` (keep the quotes and `\n` sequences as-is) |
 | `FIRESTORE_EMULATOR_HOST` | No | — | e.g. `localhost:8080` — point at a local Firestore emulator instead of production |
+| `ADMIN_API_KEY` | Yes | — | Shared secret required to call `POST /cars` (add a new automobile). Pick a long random value, e.g. `openssl rand -hex 32`. There's no user-account system in this app — this is a single password, not real auth |
 
 Getting Firebase credentials: Firebase Console → Project Settings → Service Accounts → **Generate
 new private key**. You then have two ways to get that JSON into the app — see
@@ -127,14 +128,15 @@ Layers, and what each one actually exercises:
 | Test file | What it covers | Firestore boundary |
 | --- | --- | --- |
 | `services/firestore.service.test.ts` | Generic CRUD wrapper (`create`/`findById`/`findAll`/`update`/`delete`) | Fake Firestore (real query logic) |
-| `services/automobile.service.test.ts` | `AutomobileService`'s real query-building: pagination/cursors, prefix search, filters, price ranges, the q+price-range 400, CSV export streaming | Fake Firestore (real query logic) |
+| `services/automobile.service.test.ts` | `AutomobileService`'s real query-building: pagination/cursors, prefix search, filters, MPG ranges, the q+MPG-range 400, CSV export streaming | Fake Firestore (real query logic) |
 | `controllers/automobile.controller.test.ts` | HTTP glue only — reads `req.validated`, status codes, 404 shaping, calling the right service method | `automobile.service` module mocked |
 | `middleware/validate.test.ts` | Schema parsing onto `req.validated`, partial schema sets, `ZodError` forwarded to `next()` on failure | n/a |
 | `middleware/errorHandler.test.ts` | `ApiError` → its status code, `ZodError` → 400 + issues, malformed-JSON `SyntaxError` → 400, unrecognized error → 500, the `headersSent` guard | n/a |
+| `middleware/requireAdminKey.test.ts` | Correct key → `next()`, missing/wrong key → 401 `ApiError` | n/a |
 | `middleware/requestId.test.ts` | Mints a UUID when absent, reuses/echoes an inbound `X-Request-Id`, takes the first value if sent multiple times | n/a |
 | `utils/apiResponse.test.ts` | `sendSuccess` envelope shape and status code override | n/a |
-| `src/app.test.ts` (Supertest) | Full request/response cycle through the real Express app: routing, envelope shape, Zod validation → 400, malformed JSON body → 400, `X-Request-Id` correlation end-to-end, CSV response headers/streaming, the bare `/health` route, unmatched-route 404 | `automobile.service` module mocked |
-| `src/scripts/import-automobile-data.test.ts` | Missing-value/numeric/word-to-number conversion, row validation, `parseArgs`, and `run()` end-to-end against a temp CSV (batching, `--dry-run`, `--collection`) | Fake Firestore (real batching logic) |
+| `src/app.test.ts` (Supertest) | Full request/response cycle through the real Express app: routing, envelope shape, Zod validation → 400, malformed JSON body → 400, `X-Request-Id` correlation end-to-end, CSV response headers/streaming, `POST /cars` admin-key gate (401/400/201), the bare `/health` route, unmatched-route 404 | `automobile.service` module mocked |
+| `src/scripts/import-automobile-data.test.ts` | Missing-value/numeric conversion, row validation, the 2-digit→4-digit model year expansion, `parseArgs`, and `run()` end-to-end against a temp CSV (batching, `--dry-run`, `--collection`) | Fake Firestore (real batching logic) |
 
 Not yet covered by a dedicated test: the CORS-origin comma-splitting in `config/index.ts` and the
 Firebase credential-strategy selection in `config/firebase.ts` (both added for this Render pass) —
@@ -206,27 +208,29 @@ further changes:
 
 ## Importing the Dataset
 
-`src/scripts/import-automobile-data.ts` loads the classic UCI "Automobile" (imports-85) dataset
-into Firestore. It streams the CSV, validates and type-converts each row with `zod`, treats
-blank cells and the dataset's `?` marker as missing values, and writes in batches (capped at
-Firestore's 500-operation limit) so imports of any size stay within quota.
+`src/scripts/import-automobile-data.ts` loads the "Auto MPG" dataset (Kaggle's
+[tawfikelmetwally/automobile-dataset](https://www.kaggle.com/datasets/tawfikelmetwally/automobile-dataset))
+into Firestore. It streams the CSV, validates and type-converts each row with `zod`, treats blank
+cells as missing values (only `horsepower` can actually be missing in this dataset — 6 of its 398
+rows have no value), expands the CSV's 2-digit `model_year` (e.g. `70`) into a full 4-digit year
+(`1970`), and writes in batches (capped at Firestore's 500-operation limit) so imports of any size
+stay within quota.
 
-Place your full CSV at `data/automobile.csv` (gitignored — bring your own copy) or point at any
-path with `--file`. A small `data/automobile-sample.csv` fixture (5 rows, including missing
-values) is committed for smoke-testing.
+The real dataset (`data/Automobile.csv`, ~398 rows) is committed directly to this repo — it's
+small, public, and required by the brief, so there's no separate "bring your own copy" step.
 
 ```bash
 # Validate + preview without writing to Firestore
-npm run import:automobile -- --file=data/automobile-sample.csv --dry-run
+npm run import:automobile -- --file=data/Automobile.csv --dry-run
 
 # Real import
-npm run import:automobile -- --file=data/automobile.csv --collection=automobiles
+npm run import:automobile -- --file=data/Automobile.csv --collection=automobiles
 ```
 
-Flags: `--file` (CSV path), `--collection` (Firestore collection name, default `automobiles`),
-`--batch-size` (default/max 500), `--dry-run` (validate and log without committing writes).
-Rows that fail validation are logged and skipped; the run ends with a summary of
-total/imported/skipped row counts.
+Flags: `--file` (CSV path, default `data/Automobile.csv`), `--collection` (Firestore collection
+name, default `automobiles`), `--batch-size` (default/max 500), `--dry-run` (validate and log
+without committing writes). Rows that fail validation are logged and skipped; the run ends with a
+summary of total/imported/skipped row counts.
 
 ## API Endpoints
 
@@ -243,7 +247,7 @@ traceable end to end via a correlation id:
   themselves — validation is a route-level concern, not scattered across handlers. A failed schema
   throws a `ZodError`, which bubbles to the centralized error handler and comes back as a 400.
 - **Centralized error handling.** Every thrown/rejected error — from a controller, a service (e.g.
-  `AutomobileService`'s `ApiError(400, ...)` when a search and a price range are combined), a
+  `AutomobileService`'s `ApiError(400, ...)` when a search and an MPG range are combined), a
   failed `validate()` schema, or malformed JSON in the request body — flows through the single
   `errorHandler` middleware (`src/middleware/errorHandler.ts`), which maps each case to the right
   status code and the same error envelope. It also guards against writing a second response once
@@ -282,16 +286,24 @@ lives in `services/automobile.service.ts`'s `AutomobileService`, which extends t
 | GET | `/api/cars/:id` | Single record, 404 if missing |
 | GET | `/api/cars/search` | Alias of `/api/cars` (same handler, same params) — kept for backward compatibility |
 | GET | `/api/cars/export` | Streams the (optionally filtered/sorted) result set as a CSV download |
+| POST | `/api/cars` | Adds a new automobile. Requires the `X-Admin-Key` header (see below) |
+
+`POST /api/cars` expects a full JSON body matching every field of the `Automobile` model (see
+`createAutomobileSchema` in `models/automobile.model.ts`) — no CSV-style string coercion here,
+since it's a JSON API request, not a spreadsheet cell. It's the only endpoint that isn't public:
+`middleware/requireAdminKey.ts` checks the request's `X-Admin-Key` header against `ADMIN_API_KEY`
+and returns 401 if it's missing or wrong, before validation even runs. On success it returns 201
+with the created record, including its generated Firestore document `id`.
 
 `/api/cars`, `/api/cars/search` and `/api/cars/export` all accept the same query params:
 
-- **Filtering**: `make`, `fuelType` (`gas`/`diesel`), `aspiration` (`std`/`turbo`), `bodyStyle`,
-  `driveWheels`, `engineLocation` (all exact match), plus `minPrice`/`maxPrice` (a range on
-  `price`).
-- **Searching**: `q` — a case-insensitive prefix match on `make` (e.g. `q=por` matches
-  "porsche").
-- **Sorting**: `sortBy` (one of `make`, `price`, `cityMpg`, `highwayMpg`, `horsepower`,
-  `symboling`) and `sortOrder` (`asc`, default, or `desc`).
+- **Filtering**: `origin` (`usa`/`europe`/`japan`) and `cylinders` (exact match), plus
+  `minMpg`/`maxMpg` (a range on `mpg`).
+- **Searching**: `q` — a case-insensitive prefix match on `name` (e.g. `q=toy` matches
+  "toyota corona").
+- **Sorting**: `sortBy` (one of `name`, `mpg`, `cylinders`, `displacement`, `horsepower`,
+  `weight`, `acceleration`, `modelYear`) and `sortOrder` (`asc`, default, or `desc`). `origin` is
+  filterable but not sortable — it's categorical, not part of this list.
 - **Pagination**: `limit` (page size, default 20, max 100) and `cursor` (the `nextCursor` from
   the previous page).
 
@@ -299,17 +311,43 @@ Two combinations return a 400 instead of a raw Firestore error, both for the sam
 reason — Firestore allows only one range (inequality) filter per query, and forces the first
 `orderBy` to match whichever field that filter is on:
 
-- `q` + a price range (`minPrice`/`maxPrice`) — the `q` prefix match already occupies the one
-  allowed range filter, on `make`.
+- `q` + an MPG range (`minMpg`/`maxMpg`) — the `q` prefix match already occupies the one allowed
+  range filter, on `name`.
 - `sortBy` set to anything other than the field a range filter already forces the order onto
-  (`make` for `q`, `price` for a price range) — e.g. `q=por&sortBy=price` is rejected, but
-  `q=por&sortBy=make` is fine since it agrees with the forced order.
+  (`name` for `q`, `mpg` for an MPG range) — e.g. `q=toy&sortBy=mpg` is rejected, but
+  `q=toy&sortBy=name` is fine since it agrees with the forced order.
 
 `/cars` and `/cars/search` respond with `{ success: true, data: { data, nextCursor, hasMore } }`.
 `/cars/export` has no pagination and no envelope — it streams every matching row (respecting
 `sortBy`/`sortOrder`) as a raw `text/csv` file download
 (`Content-Disposition: attachment; filename="automobiles.csv"`), so it stays memory-efficient even
 for a large result set.
+
+### Firestore composite indexes
+
+Firestore needs a **composite index** for any query that combines a `where()` equality filter
+with an `orderBy()` on a *different* field — a plain filter alone, or a plain sort alone, only
+needs the automatic single-field index every field already gets. This service avoids the problem
+for the common case by **not** applying a default sort when a filter is active and no `sortBy`
+was requested (see the doc comment on `AutomobileService.buildQuery`) — so filtering alone never
+needs a composite index. Explicitly combining a filter *with* `sortBy` still can, since that's a
+real query shape Firestore has to serve.
+
+`firestore.indexes.json` (+ `firebase.json`) declares the composite indexes for every
+{one categorical filter} × {one sortable field} combination, since that's what `/cars/export`
+can realistically send in one request (a filter plus whatever column the table's currently
+sorted by). Deploy them with the [Firebase CLI](https://firebase.google.com/docs/cli):
+
+```bash
+npm install -g firebase-tools   # if you don't have it
+firebase deploy --only firestore:indexes --project <your-firebase-project-id>
+```
+
+Index builds take a few minutes for an empty/small collection. If a query combination isn't
+covered (e.g. two filters *and* a sort together) and you hit it before its index exists,
+Firestore's error (`FAILED_PRECONDITION: The query requires an index...`) includes a direct link
+that creates exactly that index with one click — the normal way to discover and add indexes as
+real usage reveals them, not something you need to pre-empt exhaustively.
 
 The service's underlying `getAll()`, `search()` and `filter()` methods remain independently
 callable (e.g. from other services or tests); `query()` is the combined entry point the

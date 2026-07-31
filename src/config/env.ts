@@ -19,6 +19,11 @@ const envSchema = z
     FIREBASE_PRIVATE_KEY: z.string().optional(),
 
     FIRESTORE_EMULATOR_HOST: z.string().optional(),
+
+    // Shared secret required to create a new automobile record (POST /cars). There's no user
+    // account system in this app — this is a deliberately lightweight gate (a single password
+    // for the one person who's allowed to add data), not a substitute for real auth.
+    ADMIN_API_KEY: z.string().min(1),
   })
   .superRefine((data, ctx) => {
     const hasServiceAccountPath = Boolean(data.FIREBASE_SERVICE_ACCOUNT_PATH);
