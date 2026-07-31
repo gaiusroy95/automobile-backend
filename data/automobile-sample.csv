@@ -1,0 +1,6 @@
+symboling,normalized-losses,make,fuel-type,aspiration,num-of-doors,body-style,drive-wheels,engine-location,wheel-base,length,width,height,curb-weight,engine-type,num-of-cylinders,engine-size,fuel-system,bore,stroke,compression-ratio,horsepower,peak-rpm,city-mpg,highway-mpg,price
+3,?,alfa-romero,gas,std,two,convertible,rwd,front,88.6,168.8,64.1,48.8,2548,dohc,four,130,mpfi,3.47,2.68,9.0,111,5000,21,27,13495
+1,148,audi,gas,std,four,sedan,fwd,front,99.8,176.6,66.2,54.3,2337,ohc,four,109,mpfi,3.19,3.4,10.0,102,5500,24,30,13950
+2,164,bmw,gas,std,?,sedan,rwd,front,101.2,176.8,64.8,54.3,2395,ohc,four,108,mpfi,3.5,2.8,8.8,101,5800,23,29,16925
+0,?,chevrolet,gas,std,two,hatchback,fwd,front,94.5,158.8,63.6,52.0,1874,ohc,three,61,2bbl,2.91,3.03,9.5,48,5100,47,53,5151
+-1,93,dodge,diesel,turbo,four,wagon,fwd,front,103.3,174.6,64.6,59.8,2535,ohc,four,152,idi,3.7,3.52,21.0,95,4150,28,33,?

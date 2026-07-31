@@ -1,0 +1,30 @@
+# Render Blueprint — see https://render.com/docs/blueprint-spec
+#
+# Deploys this backend as a Docker web service. Render assigns and injects PORT itself for
+# Docker-based services (overriding the Dockerfile's ENV default), so it's deliberately not
+# listed below. Every value marked `sync: false` is a secret: Render will prompt for it in the
+# dashboard/CLI instead of storing it in this file — nothing sensitive is committed here.
+services:
+  - type: web
+    name: firehawk-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        sync: false # comma-separated, e.g. https://your-app.vercel.app,http://localhost:4200
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      # If you're using the Secret File strategy instead of the three discrete vars above,
+      # remove those and uncomment this one (and add the Secret File itself in the dashboard):
+      # - key: FIREBASE_SERVICE_ACCOUNT_PATH
+      #   value: /etc/secrets/firebase-service-account.json
